@@ -68,12 +68,15 @@
 #define SOF15 0xcf
 
 static const unsigned char *
-_jpeg_skip_segment (const unsigned char *p)
+_jpeg_skip_segment (const unsigned char *p, const unsigned char *end)
 {
     int len;
 
     p++;
     len = (p[0] << 8) | p[1];
+
+    if (len > end - p)
+	return end;
 
     return p + len;
 }
@@ -125,7 +128,7 @@ _cairo_image_info_get_jpeg_info (cairo_image_info_t	*info,
 	case SOF14:
 	case SOF15:
 	    /* Start of frame found. Extract the image parameters. */
-	    if (p + 8 > data + length)
+	    if (p + 9 > data + length)
 		return CAIRO_INT_STATUS_UNSUPPORTED;
 
 	    _jpeg_extract_info (info, p);
@@ -140,12 +143,13 @@ _cairo_image_info_get_jpeg_info (cairo_image_info_t	*info,
 	    if (p + 3 > data + length)
 		return CAIRO_INT_STATUS_UNSUPPORTED;
 
-	    p = _jpeg_skip_segment (p);
+	    p = _jpeg_skip_segment (p, data + length);
 	    break;
 	}
     }
 
-    return CAIRO_STATUS_SUCCESS;
+    /* No start of frame found. */
+    return CAIRO_INT_STATUS_UNSUPPORTED;
 }
 
 /* JPEG 2000 (image/jp2)
