@@ -165,16 +165,40 @@ static const unsigned char _jpx_signature[] = {
     0x00, 0x00, 0x00, 0x0c, 0x6a, 0x50, 0x20, 0x20, 0x0d, 0x0a, 0x87, 0x0a
 };
 
+/* Returns the length of the box starting at p, or 0 if the box is
+ * invalid or does not fit in the data. */
+static size_t
+_jpx_box_length (const unsigned char *p, const unsigned char *end)
+{
+    uint32_t length;
+
+    if (p + 8 > end)
+	return 0;
+
+    length = get_unaligned_be32 (p);
+
+    /* A length of 0 means that the box extends to the end of the data. */
+    if (length == 0)
+	return end - p;
+
+    /* A length of 1 means that a 64-bit length follows the box type.
+     * Such boxes are not supported, nor are the reserved lengths 2
+     * to 7. */
+    if (length < 8 || length > (size_t) (end - p))
+	return 0;
+
+    return length;
+}
+
 static const unsigned char *
 _jpx_next_box (const unsigned char *p, const unsigned char *end)
 {
-    if (p + 4 < end) {
-	uint32_t length = get_unaligned_be32 (p);
-	if (p + length < end)
-	    return p + length;
-    }
+    size_t length = _jpx_box_length (p, end);
 
-    return end;
+    if (length == 0)
+	return end;
+
+    return p + length;
 }
 
 static const unsigned char *
@@ -186,15 +210,7 @@ _jpx_get_box_contents (const unsigned char *p)
 static cairo_bool_t
 _jpx_match_box (const unsigned char *p, const unsigned char *end, uint32_t type)
 {
-    uint32_t length;
-
-    if (p + 8 < end) {
-	length = get_unaligned_be32 (p);
-	if (get_unaligned_be32 (p + 4) == type &&  p + length < end)
-	    return TRUE;
-    }
-
-    return FALSE;
+    return _jpx_box_length (p, end) != 0 && get_unaligned_be32 (p + 4) == type;
 }
 
 static const unsigned char *
