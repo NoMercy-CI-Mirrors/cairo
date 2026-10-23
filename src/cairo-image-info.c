@@ -340,7 +340,7 @@ _jbig2_find_data_end (const unsigned char *p,
 		end_seq[1] = 0xac;
 	    }
 	    p += 18;
-	    while (p < end) {
+	    while (p + 1 < end) {
 		if (p[0] == end_seq[0] && p[1] == end_seq[1]) {
 		    /* Skip the 2 terminating bytes and the 4 byte row count that follows. */
 		    p += 6;
@@ -364,9 +364,10 @@ _jbig2_get_next_segment (const unsigned char  *p,
 {
     unsigned long seg_num;
     cairo_bool_t big_page_size;
-    int num_segs;
-    int ref_seg_bytes;
-    int referred_size;
+    uint32_t num_segs;
+    size_t ref_seg_bytes;
+    size_t referred_size;
+    size_t header_len;
 
     if (p + 6 >= end)
 	return NULL;
@@ -385,7 +386,6 @@ _jbig2_get_next_segment (const unsigned char  *p,
     } else {
 	ref_seg_bytes = 1;
     }
-    p += ref_seg_bytes;
 
     if (seg_num <= 256)
 	referred_size = 1;
@@ -394,11 +394,16 @@ _jbig2_get_next_segment (const unsigned char  *p,
     else
 	referred_size = 4;
 
-    p += num_segs * referred_size;
-    p += big_page_size ? 4 : 1;
-    if (p + 4 >= end)
+    /* Skip the referred-to segment count and retention flags, the
+     * referred-to segment numbers and the page association. num_segs
+     * is less than 2^29, so header_len is at most 0x84000004 and
+     * header_len + 4 does not overflow, even with a 32-bit size_t. */
+    header_len = ref_seg_bytes + num_segs * referred_size +
+		 (big_page_size ? 4 : 1);
+    if (header_len + 4 >= (size_t) (end - p))
 	return NULL;
 
+    p += header_len;
     *data_len = get_unaligned_be32 (p);
     p += 4;
     *data = p;
@@ -411,13 +416,13 @@ _jbig2_get_next_segment (const unsigned char  *p,
 
 	*data_len = p - *data;
     } else {
+	if (*data_len >= (size_t) (end - p))
+	    return NULL;
+
 	p += *data_len;
     }
 
-    if (p < end)
-	return p;
-    else
-	return NULL;
+    return p;
 }
 
 static void
