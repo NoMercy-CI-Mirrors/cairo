@@ -2198,9 +2198,37 @@ _range_contains_glyph (const cairo_box_t *extents,
 	   top < extents->p2.y;
 }
 
+/*
+ * The range of device positions a glyph at @v may be drawn at. Backends
+ * that round glyph positions draw at the rounded position, but the image
+ * and Xlib compositors draw at the nearest quarter pixel,
+ * whatever the rounding option says. With @subpixel, cover both.
+ */
+static void
+_cairo_scaled_glyph_position_range (double                v,
+				    cairo_bool_t          round,
+				    cairo_bool_t          subpixel,
+				    cairo_fixed_t        *lo,
+				    cairo_fixed_t        *hi)
+{
+    cairo_fixed_t base, quarter;
+
+    base = round ? _cairo_fixed_from_int (_cairo_lround (v)) : _cairo_fixed_from_double (v);
+    if (! subpixel) {
+	*lo = *hi = base;
+	return;
+    }
+
+    quarter = _cairo_fixed_from_double (floor (4 * v + 0.5) / 4);
+
+    *lo = MIN (base, quarter);
+    *hi = MAX (base, quarter);
+}
+
 static cairo_status_t
 _cairo_scaled_font_single_glyph_device_extents (cairo_scaled_font_t	 *scaled_font,
 						const cairo_glyph_t	 *glyph,
+						cairo_bool_t		  subpixel,
 						cairo_rectangle_int_t   *extents)
 {
     cairo_scaled_glyph_t *scaled_glyph;
@@ -2215,21 +2243,15 @@ _cairo_scaled_font_single_glyph_device_extents (cairo_scaled_font_t	 *scaled_fon
     if (likely (status == CAIRO_STATUS_SUCCESS)) {
 	cairo_bool_t round_xy = _cairo_font_options_get_round_glyph_positions (&scaled_font->options) == CAIRO_ROUND_GLYPH_POS_ON;
 	cairo_box_t box;
-	cairo_fixed_t v;
+	cairo_fixed_t lo, hi;
 
-	if (round_xy)
-	    v = _cairo_fixed_from_int (_cairo_lround (glyph->x));
-	else
-	    v = _cairo_fixed_from_double (glyph->x);
-	box.p1.x = v + scaled_glyph->bbox.p1.x;
-	box.p2.x = v + scaled_glyph->bbox.p2.x;
+	_cairo_scaled_glyph_position_range (glyph->x, round_xy, subpixel, &lo, &hi);
+	box.p1.x = lo + scaled_glyph->bbox.p1.x;
+	box.p2.x = hi + scaled_glyph->bbox.p2.x;
 
-	if (round_xy)
-	    v = _cairo_fixed_from_int (_cairo_lround (glyph->y));
-	else
-	    v = _cairo_fixed_from_double (glyph->y);
-	box.p1.y = v + scaled_glyph->bbox.p1.y;
-	box.p2.y = v + scaled_glyph->bbox.p2.y;
+	_cairo_scaled_glyph_position_range (glyph->y, round_xy, subpixel, &lo, &hi);
+	box.p1.y = lo + scaled_glyph->bbox.p1.y;
+	box.p2.y = hi + scaled_glyph->bbox.p2.y;
 
 	_cairo_box_round_to_rectangle (&box, extents);
     }
@@ -2244,6 +2266,7 @@ cairo_status_t
 _cairo_scaled_font_glyph_device_extents (cairo_scaled_font_t	 *scaled_font,
 					 const cairo_glyph_t	 *glyphs,
 					 int                      num_glyphs,
+					 cairo_bool_t		  subpixel,
 					 cairo_rectangle_int_t   *extents,
 					 cairo_bool_t *overlap_out)
 {
@@ -2262,6 +2285,7 @@ _cairo_scaled_font_glyph_device_extents (cairo_scaled_font_t	 *scaled_font,
 	    *overlap_out = FALSE;
 	return _cairo_scaled_font_single_glyph_device_extents (scaled_font,
 							       glyphs,
+							       subpixel,
 							       extents);
     }
 
@@ -2271,7 +2295,7 @@ _cairo_scaled_font_glyph_device_extents (cairo_scaled_font_t	 *scaled_font,
 
     for (i = 0; i < num_glyphs; i++) {
 	cairo_scaled_glyph_t	*scaled_glyph;
-	cairo_fixed_t x, y, x1, y1, x2, y2;
+	cairo_fixed_t lo, hi, x1, y1, x2, y2;
 	int cache_index = glyphs[i].index % ARRAY_LENGTH (glyph_cache);
 
 	scaled_glyph = glyph_cache[cache_index];
@@ -2289,19 +2313,17 @@ _cairo_scaled_font_glyph_device_extents (cairo_scaled_font_t	 *scaled_font,
 	    glyph_cache[cache_index] = scaled_glyph;
 	}
 
-	if (round_glyph_positions == CAIRO_ROUND_GLYPH_POS_ON)
-	    x = _cairo_fixed_from_int (_cairo_lround (glyphs[i].x));
-	else
-	    x = _cairo_fixed_from_double (glyphs[i].x);
-	x1 = x + scaled_glyph->bbox.p1.x;
-	x2 = x + scaled_glyph->bbox.p2.x;
+	_cairo_scaled_glyph_position_range (glyphs[i].x,
+					    round_glyph_positions == CAIRO_ROUND_GLYPH_POS_ON,
+					    subpixel, &lo, &hi);
+	x1 = lo + scaled_glyph->bbox.p1.x;
+	x2 = hi + scaled_glyph->bbox.p2.x;
 
-	if (round_glyph_positions == CAIRO_ROUND_GLYPH_POS_ON)
-	    y = _cairo_fixed_from_int (_cairo_lround (glyphs[i].y));
-	else
-	    y = _cairo_fixed_from_double (glyphs[i].y);
-	y1 = y + scaled_glyph->bbox.p1.y;
-	y2 = y + scaled_glyph->bbox.p2.y;
+	_cairo_scaled_glyph_position_range (glyphs[i].y,
+					    round_glyph_positions == CAIRO_ROUND_GLYPH_POS_ON,
+					    subpixel, &lo, &hi);
+	y1 = lo + scaled_glyph->bbox.p1.y;
+	y2 = hi + scaled_glyph->bbox.p2.y;
 
 	if (overlap == FALSE)
 	    overlap = _range_contains_glyph (&box, x1, y1, x2, y2);
