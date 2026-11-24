@@ -157,6 +157,7 @@ test_sources = [
   'font-options.c',
   'glyph-cache-pressure.c',
   'glyph-path.c',
+  'glyph-subpixel-extents.c',
   'get-and-set.c',
   'get-clip.c',
   'get-group-target.c',

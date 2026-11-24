@@ -1239,6 +1239,7 @@ cairo_private cairo_status_t
 _cairo_scaled_font_glyph_device_extents (cairo_scaled_font_t	 *scaled_font,
 					 const cairo_glyph_t	 *glyphs,
 					 int                      num_glyphs,
+					 cairo_bool_t		  subpixel,
 					 cairo_rectangle_int_t   *extents,
 					 cairo_bool_t		 *overlap);
 

@@ -473,8 +473,11 @@ _cairo_composite_rectangles_init_for_glyphs (cairo_composite_rectangles_t *exten
 	return CAIRO_INT_STATUS_NOTHING_TO_DO;
     }
 
+    /* The image and Xlib compositors draw glyphs at quarter pixels. */
     status = _cairo_scaled_font_glyph_device_extents (scaled_font,
 						      glyphs, num_glyphs,
+						      surface->type == CAIRO_SURFACE_TYPE_IMAGE ||
+						      surface->type == CAIRO_SURFACE_TYPE_XLIB,
 						      &extents->mask,
 						      overlap);
     if (unlikely (status)) {
